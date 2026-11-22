@@ -161,7 +161,8 @@ export function doctor() {
     python: "winget install -e --id Python.Python.3.12",
     libs: `python -m pip install --upgrade ${LIBS}`,
   } : {
-    ffmpeg: "brew install ffmpeg",
+    // plain Homebrew ffmpeg has no libass, so captions need ffmpeg-full on PATH
+    ffmpeg: "brew install ffmpeg-full && { brew unlink ffmpeg 2>/dev/null; brew link --overwrite --force ffmpeg-full; }",
     node: "brew install node",
     python: `brew install python@3.12 && "$(brew --prefix)/bin/python3.12" -m venv "${join(HOME, "py")}"`,
     libs: `"${VENV_PY}" -m pip install --upgrade ${LIBS}`,
