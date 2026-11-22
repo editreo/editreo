@@ -11,8 +11,10 @@ try {
       ? `Editreo: active, plan ${t.payload.plan}, styles ${t.payload.styles.includes("*") ? "all" : t.payload.styles.join(", ")}.`
       : `Editreo: license problem: ${t.error}`);
   }
-  const missing = doctor().filter((c) => !c.ok);
+  const { checks, py } = doctor();
+  const missing = checks.filter((c) => !c.ok);
   if (missing.length) lines.push(`Editreo setup: missing ${missing.map((c) => c.label).join(", ")}. Before any edit, offer to run /editreo:setup.`);
+  if (py !== "python") lines.push(`Editreo: run every Python script with "${py}" instead of python.`);
 } catch (e) {
   lines.push(`Editreo: status check failed (${e.message}).`);
 }

@@ -136,27 +136,36 @@ function run(cmd, args, shell = false) {
 }
 const firstLine = (s) => (s || "").split(/\r?\n/)[0];
 
+const WIN = platform() === "win32";
+const LIBS = "faster-whisper onnxruntime opencv-python-headless scipy numpy pillow fonttools matplotlib yt-dlp";
+// Mac: Homebrew's Python blocks plain pip installs, so Editreo keeps its own Python in ~/.editreo/py.
+const VENV_PY = join(HOME, "py", "bin", "python");
+
 export function doctor() {
-  const py = run("python", ["--version"]) ? "python" : run("python3", ["--version"]) ? "python3" : null;
+  const cmd = WIN ? "python" : VENV_PY;
+  const ver = run(cmd, ["-c", "import sys;print('Python %d.%d.%d'%sys.version_info[:3] if sys.version_info>=(3,10) else '')"]);
+  const py = ver ? cmd : null;
   const checks = [
-    { id: "ffmpeg", label: "FFmpeg", out: firstLine(run("ffmpeg", ["-version"])) },
-    { id: "ffprobe", label: "FFprobe", out: firstLine(run("ffprobe", ["-version"])) },
+    // captions need FFmpeg built with libass (the "subtitles" filter)
+    { id: "ffmpeg", label: "FFmpeg", out: /\bsubtitles\b/.test(run("ffmpeg", ["-hide_banner", "-filters"]) || "") && firstLine(run("ffmpeg", ["-version"])) },
+    { id: "ffmpeg", label: "FFprobe", out: firstLine(run("ffprobe", ["-version"])) },
     { id: "node", label: "Node.js", out: run("node", ["--version"]) },
-    { id: "npm", label: "npm", out: platform() === "win32" ? run("npm --version", [], true) : run("npm", ["--version"]) },
-    { id: "python", label: "Python", out: py && run(py, ["--version"]) },
-    { id: "whisper", label: "faster-whisper", out: py && run(py, ["-c", "import faster_whisper;print(faster_whisper.__version__)"]) },
-    { id: "ytdlp", label: "yt-dlp", out: run("yt-dlp", ["--version"]) || (py && run(py, ["-m", "yt_dlp", "--version"])) },
+    { id: "node", label: "npm", out: WIN ? run("npm --version", [], true) : run("npm", ["--version"]) },
+    { id: "python", label: "Python 3.10+", out: ver },
+    // find_spec, not import: importing every library takes seconds
+    { id: "libs", label: "Python tools", out: py && run(py, ["-c", "import sys,importlib.util as u;m=[x for x in 'faster_whisper onnxruntime cv2 scipy numpy PIL fontTools matplotlib'.split() if not u.find_spec(x)];sys.exit(1) if m else print('installed')"]) },
   ];
-  const win = platform() === "win32";
-  const fix = {
-    ffmpeg: win ? "winget install -e --id Gyan.FFmpeg" : "brew install ffmpeg",
-    ffprobe: win ? "winget install -e --id Gyan.FFmpeg" : "brew install ffmpeg",
-    node: win ? "winget install -e --id OpenJS.NodeJS.LTS" : "brew install node",
-    npm: win ? "winget install -e --id OpenJS.NodeJS.LTS" : "brew install node",
-    python: win ? "winget install -e --id Python.Python.3.12" : "brew install python",
-    whisper: `${py || (win ? "python" : "python3")} -m pip install --upgrade faster-whisper`,
-    ytdlp: `${py || (win ? "python" : "python3")} -m pip install --upgrade yt-dlp`,
+  const fix = WIN ? {
+    ffmpeg: "winget install -e --id Gyan.FFmpeg",
+    node: "winget install -e --id OpenJS.NodeJS.LTS",
+    python: "winget install -e --id Python.Python.3.12",
+    libs: `python -m pip install --upgrade ${LIBS}`,
+  } : {
+    ffmpeg: "brew install ffmpeg",
+    node: "brew install node",
+    python: `brew install python@3.12 && "$(brew --prefix)/bin/python3.12" -m venv "${join(HOME, "py")}"`,
+    libs: `"${VENV_PY}" -m pip install --upgrade ${LIBS}`,
   };
   for (const c of checks) { c.ok = !!c.out; c.fix = c.ok ? null : fix[c.id]; }
-  return checks;
+  return { checks, py: py || cmd };
 }
