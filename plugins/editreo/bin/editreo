@@ -1,0 +1,55 @@
+#!/usr/bin/env node
+// Editreo CLI. On PATH inside Claude Code while the plugin is enabled.
+// editreo activate <key> | status | list | fetch <style> | doctor | logout
+import { STYLES } from "./lib/config.mjs";
+import { allowed, doctor, fetchPack, getToken, logout, savedLicense } from "./lib/core.mjs";
+
+const [cmd, arg] = process.argv.slice(2);
+const out = (s) => process.stdout.write(s + "\n");
+const fail = (s) => { process.stderr.write("ERROR: " + s + "\n"); process.exit(1); };
+const date = (t) => new Date(t * 1000).toISOString().slice(0, 10);
+
+switch (cmd) {
+  case "activate": {
+    if (!arg || !/^(ER|S7)(-[A-Z0-9]{4}){4}$/i.test(arg.trim())) fail("Usage: editreo activate ER-XXXX-XXXX-XXXX-XXXX");
+    const t = await getToken({ key: arg, force: true });
+    if (!t.ok) fail(t.error);
+    out(`Activated. Plan: ${t.payload.plan}. Styles: ${t.payload.styles.includes("*") ? "all" : t.payload.styles.join(", ")}.`);
+    break;
+  }
+  case "status": {
+    if (!savedLicense()) fail("Not activated. Run: editreo activate ER-XXXX-XXXX-XXXX-XXXX");
+    const t = await getToken();
+    if (!t.ok) fail(t.error);
+    out(`Plan: ${t.payload.plan} | key ${t.payload.lic.slice(0, 7)}... | token valid until ${date(t.payload.exp)}${t.offline ? " (offline)" : ""}`);
+    break;
+  }
+  case "list": {
+    const t = savedLicense() ? await getToken() : null;
+    for (const [id, name] of Object.entries(STYLES)) {
+      const mark = t?.ok ? (allowed(t.payload, id) ? "included" : "not in plan") : "activate first";
+      out(`${id.padEnd(16)} ${name.padEnd(20)} ${mark}`);
+    }
+    break;
+  }
+  case "fetch": {
+    if (!arg || !STYLES[arg]) fail(`Usage: editreo fetch <style>. Styles: ${Object.keys(STYLES).join(", ")}`);
+    const r = await fetchPack(arg);
+    if (!r.ok) fail(r.error);
+    out(`PACK_DIR=${r.dir}`);
+    out(`version ${r.version}${r.updated ? " (downloaded)" : " (up to date)"}${r.offline ? " (offline copy)" : ""}`);
+    break;
+  }
+  case "doctor": {
+    const checks = doctor();
+    for (const c of checks) out(`${c.ok ? "OK     " : "MISSING"} ${c.label.padEnd(15)} ${c.ok ? c.out : "fix: " + c.fix}`);
+    out(checks.every((c) => c.ok) ? "All tools ready." : "Run the fix commands above (ask the user first), then run editreo doctor again.");
+    break;
+  }
+  case "logout":
+    logout();
+    out("License and downloaded styles removed from this computer.");
+    break;
+  default:
+    out("editreo activate <key> | status | list | fetch <style> | doctor | logout");
+}

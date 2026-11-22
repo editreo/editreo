@@ -1,0 +1,13 @@
+{
+  "name": "editreo",
+  "description": "Editreo video editing styles for Claude Code by Marketing Musthak",
+  "owner": { "name": "Marketing Musthak", "url": "https://instagram.com/marketing.musthak" },
+  "plugins": [
+    {
+      "name": "editreo",
+      "source": "./plugins/editreo",
+      "description": "Subscription video editing styles: Lumen Cinematic, Night Lime, Sky Theme and more. Needs an Editreo key.",
+      "category": "media"
+    }
+  ]
+}
