@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Editreo CLI. On PATH inside Claude Code while the plugin is enabled.
-// editreo activate <key> | status | list | fetch <style> | doctor | logout
+// editreo activate <key> | status | list | fetch <style> | doctor | link | logout
+import { existsSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
 import { STYLES } from "./lib/config.mjs";
-import { allowed, doctor, fetchPack, getToken, logout, savedLicense } from "./lib/core.mjs";
+import { REMOTION_DIR, allowed, doctor, fetchPack, getToken, logout, savedLicense } from "./lib/core.mjs";
 
 const [cmd, arg] = process.argv.slice(2);
 const out = (s) => process.stdout.write(s + "\n");
@@ -44,7 +46,16 @@ switch (cmd) {
     const { checks, py } = doctor();
     for (const c of checks) out(`${c.ok ? "OK     " : "MISSING"} ${c.label.padEnd(15)} ${c.ok ? c.out : "fix: " + c.fix}`);
     out(`PYTHON=${py}`);
-    out(checks.every((c) => c.ok) ? "All tools ready." : "Run the fix commands above (ask the user first), then run editreo doctor again.");
+    out(`REMOTION_DIR=${REMOTION_DIR}`);
+    out(checks.every((c) => c.ok) ? "All tools ready." : "Run the fix commands above one at a time, then run editreo doctor again.");
+    break;
+  }
+  case "link": {
+    // project folder uses the shared Remotion instead of its own npm install
+    if (existsSync("node_modules")) { out("node_modules already exists here, nothing to do."); break; }
+    if (!existsSync(join(REMOTION_DIR, "node_modules", "remotion"))) fail("shared Remotion not installed. Run editreo doctor and its Remotion fix first.");
+    symlinkSync(join(REMOTION_DIR, "node_modules"), "node_modules", "junction"); // junction: no admin rights needed on Windows
+    out(`linked node_modules -> ${join(REMOTION_DIR, "node_modules")}`);
     break;
   }
   case "logout":
@@ -52,5 +63,5 @@ switch (cmd) {
     out("License and downloaded styles removed from this computer.");
     break;
   default:
-    out("editreo activate <key> | status | list | fetch <style> | doctor | logout");
+    out("editreo activate <key> | status | list | fetch <style> | doctor | link | logout");
 }

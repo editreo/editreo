@@ -140,27 +140,60 @@ const WIN = platform() === "win32";
 const LIBS = "faster-whisper onnxruntime opencv-python-headless scipy numpy pillow fonttools matplotlib yt-dlp";
 // Mac: Homebrew's Python blocks plain pip installs, so Editreo keeps its own Python in ~/.editreo/py.
 const VENV_PY = join(HOME, "py", "bin", "python");
+// One shared Remotion + headless Chrome for every project; `editreo link` points a project's node_modules here.
+export const REMOTION_DIR = join(HOME, "remotion");
+const RV = "4.0.539"; // must match the packs' template/package.json
+const REMOTION_PKGS = `remotion@${RV} @remotion/cli@${RV} @remotion/renderer@${RV} @remotion/bundler@${RV} react@19.2.0 react-dom@19.2.0`;
+function remotionReady() {
+  try {
+    const nm = join(REMOTION_DIR, "node_modules");
+    const v = JSON.parse(readFileSync(join(nm, "remotion", "package.json"), "utf8")).version;
+    return v === RV && readdirSync(join(nm, ".remotion", "chrome-headless-shell")).length > 0 && `Remotion ${v} + Chrome`;
+  } catch { return null; }
+}
 
 export function doctor() {
   const cmd = WIN ? "python" : VENV_PY;
   const ver = run(cmd, ["-c", "import sys;print('Python %d.%d.%d'%sys.version_info[:3] if sys.version_info>=(3,10) else '')"]);
   const py = ver ? cmd : null;
+  const node = run("node", ["--version"]);
+  let hf;
   const checks = [
+    // every fix below needs the package manager
+    WIN ? { id: "pm", label: "winget", out: run("winget", ["--version"]) }
+        : { id: "pm", label: "Homebrew", out: firstLine(run("brew", ["--version"])) },
     // captions need FFmpeg built with libass (the "subtitles" filter)
     { id: "ffmpeg", label: "FFmpeg", out: /\bsubtitles\b/.test(run("ffmpeg", ["-hide_banner", "-filters"]) || "") && firstLine(run("ffmpeg", ["-version"])) },
     { id: "ffmpeg", label: "FFprobe", out: firstLine(run("ffprobe", ["-version"])) },
-    { id: "node", label: "Node.js", out: run("node", ["--version"]) },
+    { id: "node", label: "Node.js 18+", out: node && Number(node.slice(1).split(".")[0]) >= 18 && node },
     { id: "node", label: "npm", out: WIN ? run("npm --version", [], true) : run("npm", ["--version"]) },
     { id: "python", label: "Python 3.10+", out: ver },
     // find_spec, not import: importing every library takes seconds
-    { id: "libs", label: "Python tools", out: py && run(py, ["-c", "import sys,importlib.util as u;m=[x for x in 'faster_whisper onnxruntime cv2 scipy numpy PIL fontTools matplotlib'.split() if not u.find_spec(x)];sys.exit(1) if m else print('installed')"]) },
+    { id: "whisper", label: "Whisper", out: py && run(py, ["-c", "import importlib.metadata as m;print('faster-whisper '+m.version('faster-whisper'))"]) },
+    { id: "ytdlp", label: "yt-dlp", out: py && run(py, ["-m", "yt_dlp", "--version"]) },
+    { id: "libs", label: "Python tools", out: py && run(py, ["-c", "import sys,importlib.util as u;m=[x for x in 'onnxruntime cv2 scipy numpy PIL fontTools matplotlib'.split() if not u.find_spec(x)];sys.exit(1) if m else print('installed')"]) },
+    { id: "remotion", label: "Remotion", out: remotionReady() },
+    // `browser path` fails until its own headless Chrome is downloaded
+    { id: "hyperframes", label: "Hyperframes", out: (hf = run("hyperframes --version", [], WIN)) && run("hyperframes browser path", [], WIN) && `Hyperframes ${hf} + Chrome` },
   ];
+  const pip = `"${WIN ? "python" : VENV_PY}" -m pip install --upgrade`;
+  const shared = {
+    // npm install --prefix creates the folder; browser ensure downloads Chrome into its node_modules/.remotion
+    remotion: `npm install --prefix "${REMOTION_DIR}" --no-audit --no-fund ${REMOTION_PKGS} && cd "${REMOTION_DIR}" && npx remotion browser ensure`,
+    whisper: `${pip} faster-whisper onnxruntime`,
+    ytdlp: `${pip} yt-dlp`,
+    hyperframes: "npm install -g hyperframes@latest && hyperframes browser ensure",
+  };
   const fix = WIN ? {
+    ...shared,
+    pm: "winget is missing: the user installs \"App Installer\" from the Microsoft Store, then reopens the Claude app",
     ffmpeg: "winget install -e --id Gyan.FFmpeg",
     node: "winget install -e --id OpenJS.NodeJS.LTS",
     python: "winget install -e --id Python.Python.3.12",
     libs: `python -m pip install --upgrade ${LIBS}`,
   } : {
+    ...shared,
+    pm: "Homebrew is missing: the user pastes the install line from https://brew.sh into Terminal (it asks for their Mac password), then reopens the Claude app",
     // plain Homebrew ffmpeg has no libass, so captions need ffmpeg-full on PATH
     ffmpeg: "brew install ffmpeg-full && { brew unlink ffmpeg 2>/dev/null; brew link --overwrite --force ffmpeg-full; }",
     node: "brew install node",

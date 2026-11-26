@@ -13,7 +13,7 @@ try {
   }
   const { checks, py } = doctor();
   const missing = checks.filter((c) => !c.ok);
-  if (missing.length) lines.push(`Editreo setup: missing ${missing.map((c) => c.label).join(", ")}. Before any edit, offer to run /editreo:setup.`);
+  if (missing.length) lines.push(`Editreo setup: missing ${missing.map((c) => c.label).join(", ")}. Before any edit, do the /editreo:setup steps; tools already installed are skipped.`);
   if (py !== "python") lines.push(`Editreo: run every Python script with "${py}" instead of python.`);
 } catch (e) {
   lines.push(`Editreo: status check failed (${e.message}).`);
